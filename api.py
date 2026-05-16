@@ -5,6 +5,7 @@ import numpy as np
 import torchaudio
 from pathlib import Path
 from typing import List, Optional
+import re
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -34,7 +35,43 @@ DECODER_CHECKPOINT = "/workspace/checkpoints/s2-pro/codec.pth"
 DECODER_CONFIG     = "modded_dac_vq"
 DEVICE             = "cuda" if torch.cuda.is_available() else "cpu"
 SAMPLE_RATE        = 44100
-CHUNK_SIZE         = 500
+
+# ─────────────────────────────────────────
+# Smart Chunker — sentence boundary pe cut karo
+# Expression tags beech mein nahi tutenge
+# ─────────────────────────────────────────
+def smart_chunk_text(text: str, max_chars: int = 300) -> List[str]:
+    paragraphs = [p.strip() for p in text.split('\n') if p.strip()]
+
+    chunks = []
+    for para in paragraphs:
+        if len(para) <= max_chars:
+            chunks.append(para)
+            continue
+
+        sentences = re.split(r'(?<=[.!?…])\s+', para)
+
+        current_chunk = ""
+        for sentence in sentences:
+            if len(sentence) > max_chars:
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                    current_chunk = ""
+                chunks.append(sentence.strip())
+                continue
+
+            if len(current_chunk) + len(sentence) + 1 <= max_chars:
+                current_chunk += (" " if current_chunk else "") + sentence
+            else:
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                current_chunk = sentence
+
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+
+    return [c for c in chunks if c.strip()]
+
 
 app = FastAPI(title="Fish Speech TTS API")
 app.mount("/output", StaticFiles(directory=str(OUTPUT_DIR)), name="output")
@@ -176,7 +213,8 @@ async def generate_tts(request: Request):
 
         voice_bytes = voice_file.read_bytes()
 
-        text_chunks = [text[i:i+CHUNK_SIZE] for i in range(0, len(text), CHUNK_SIZE)]
+        # Smart chunking — sentence boundary pe, tags safe
+        text_chunks = smart_chunk_text(text, max_chars=300)
         total_chunks += len(text_chunks)
 
         for chunk in text_chunks:
@@ -205,8 +243,6 @@ async def generate_tts(request: Request):
 
 # ─────────────────────────────────────────
 # Job Routes Register
-# (job_routes.py se /generate-job aur
-#  /job-status routes yahan attach hote hain)
 # ─────────────────────────────────────────
 from job_routes import router as job_router
 app.include_router(job_router)
