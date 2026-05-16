@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoiceGen Studio</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a26;
+    --border: #2a2a3d;
+    --accent: #7c6dff;
+    --accent2: #ff6d9d;
+    --text: #e8e8f0;
+    --muted: #7070a0;
+    --success: #4fffb0;
+    --warn: #ffb74d;
+    --card-glow: rgba(124, 109, 255, 0.08);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Noise texture overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.5;
+  }
+
+  header {
+    padding: 2rem 3rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    position: relative;
+    z-index: 1;
+  }
+
+  .logo-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 16px var(--accent);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(0.8); }
+  }
+
+  header h1 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 1.4rem;
+    letter-spacing: -0.02em;
+    color: var(--text);
+  }
+
+  header h1 span { color: var(--accent); }
+
+  .badge {
+    margin-left: auto;
+    font-size: 0.65rem;
+    padding: 0.25rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+  }
+
+  /* ── SCREENS ── */
+  .screen {
+    display: none;
+    position: relative;
+    z-index: 1;
+  }
+  .screen.active { display: block; }
+
+  /* ── SETUP SCREEN ── */
+  #setup-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - 70px);
+    padding: 2rem;
+  }
+  #setup-screen.active { display: flex; }
+
+  .setup-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 3rem;
+    width: 100%;
+    max-width: 480px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .setup-card::before {
+    content: '';
+    position: absolute;
+    top: -60px; right: -60px;
+    width: 200px; height: 200px;
+    background: radial-gradient(circle, rgba(124,109,255,0.15), transparent 70%);
+    pointer-events: none;
+  }
+
+  .step-label {
+    font-size: 0.65rem;
+    color: var(--accent);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 0.75rem;
+  }
+
+  .setup-card h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    line-height: 1.2;
+  }
+
+  .setup-card p {
+    color: var(--muted);
+    font-size: 0.8rem;
+    margin-bottom: 2rem;
+    line-height: 1.6;
+  }
+
+  .input-wrap {
+    position: relative;
+    margin-bottom: 1rem;
+  }
+
+  .input-wrap input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.85rem 1rem;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 0.85rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .input-wrap input:focus { border-color: var(--accent); }
+  .input-wrap input::placeholder { color: var(--muted); }
+
+  .error-msg {
+    color: var(--accent2);
+    font-size: 0.72rem;
+    margin-top: 0.4rem;
+    display: none;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 0.9rem;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 0.9rem;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+    transition: opacity 0.2s, transform 0.1s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn:hover { opacity: 0.9; }
+  .btn:active { transform: scale(0.98); }
+
+  .btn.secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    margin-top: 0.75rem;
+  }
+
+  .btn.secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Domain confirm banner */
+  .domain-confirm {
+    background: rgba(124,109,255,0.1);
+    border: 1px solid rgba(124,109,255,0.3);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    font-size: 0.75rem;
+    color: var(--accent);
+    margin-bottom: 1.5rem;
+    display: none;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .domain-confirm .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); flex-shrink: 0; }
+
+  /* Upload zone */
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 2.5rem 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    margin-bottom: 1.25rem;
+    position: relative;
+  }
+
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(124,109,255,0.05);
+  }
+
+  .upload-zone input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+
+  .upload-icon {
+    font-size: 2rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .upload-zone p {
+    color: var(--muted);
+    font-size: 0.78rem;
+    margin-bottom: 0;
+    line-height: 1.5;
+  }
+
+  .upload-zone .file-name {
+    color: var(--success);
+    font-size: 0.8rem;
+    margin-top: 0.5rem;
+    display: none;
+  }
+
+  /* ── MAIN SCREEN ── */
+  #main-screen { padding: 2rem 3rem; }
+  #main-screen.active { display: block; }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2.5rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .topbar h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .topbar .meta {
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-top: 0.2rem;
+  }
+
+  .topbar .meta span { color: var(--accent); }
+
+  .btn-sm {
+    padding: 0.5rem 1rem;
+    font-size: 0.75rem;
+    font-family: 'DM Mono', monospace;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Cards grid */
+  #cards-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    gap: 1.25rem;
+  }
+
+  .voice-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1.5rem;
+    position: relative;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    overflow: hidden;
+  }
+
+  .voice-card:hover {
+    border-color: rgba(124,109,255,0.4);
+    box-shadow: 0 0 30px var(--card-glow);
+  }
+
+  .voice-card::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .voice-card.playing::after { opacity: 1; }
+  .voice-card.playing { border-color: rgba(124,109,255,0.5); }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  .card-index {
+    font-size: 0.65rem;
+    color: var(--muted);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.2rem 0.5rem;
+    flex-shrink: 0;
+  }
+
+  .card-meta {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .tag {
+    font-size: 0.65rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 100px;
+    border: 1px solid;
+    letter-spacing: 0.06em;
+  }
+
+  .tag-voice {
+    color: var(--accent);
+    border-color: rgba(124,109,255,0.4);
+    background: rgba(124,109,255,0.08);
+  }
+
+  .tag-speed {
+    color: var(--warn);
+    border-color: rgba(255,183,77,0.4);
+    background: rgba(255,183,77,0.08);
+  }
+
+  .card-text {
+    font-size: 0.82rem;
+    color: var(--muted);
+    line-height: 1.7;
+    margin-bottom: 1.25rem;
+    border-left: 2px solid var(--border);
+    padding-left: 0.85rem;
+    transition: border-color 0.2s;
+  }
+
+  .voice-card:hover .card-text { border-left-color: var(--accent); }
+
+  /* Editable text */
+  .card-text[contenteditable="true"] {
+    outline: none;
+    border-left-color: var(--accent);
+    color: var(--text);
+    background: rgba(124,109,255,0.04);
+    border-radius: 0 6px 6px 0;
+    padding: 0.5rem 0.85rem;
+  }
+
+  .card-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  /* Play button */
+  .play-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1.1rem;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 100px;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+
+  .play-btn:hover { opacity: 0.85; transform: scale(1.03); }
+  .play-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .play-btn .icon { font-size: 0.8rem; }
+
+  .play-btn.loading {
+    background: var(--surface2);
+    color: var(--muted);
+    border: 1px solid var(--border);
+  }
+
+  .play-btn.stop { background: var(--accent2); }
+
+  /* Progress bar */
+  .audio-progress {
+    flex: 1;
+    height: 3px;
+    background: var(--surface2);
+    border-radius: 10px;
+    overflow: hidden;
+    display: none;
+  }
+
+  .audio-progress.active { display: block; }
+
+  .audio-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    width: 0%;
+    transition: width 0.1s linear;
+    border-radius: 10px;
+  }
+
+  /* Status indicator */
+  .card-status {
+    font-size: 0.65rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 100px;
+    display: none;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .card-status.cached {
+    display: inline-flex;
+    color: var(--success);
+    background: rgba(79,255,176,0.08);
+    border: 1px solid rgba(79,255,176,0.25);
+  }
+
+  .card-status.modified {
+    display: inline-flex;
+    color: var(--warn);
+    background: rgba(255,183,77,0.08);
+    border: 1px solid rgba(255,183,77,0.25);
+  }
+
+  .status-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+  /* Spinner */
+  .spinner {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 2px solid rgba(255,255,255,0.2);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Waveform viz (purely decorative) */
+  .waveform {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: auto;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .voice-card.playing .waveform { opacity: 1; }
+
+  .waveform span {
+    display: block;
+    width: 3px;
+    background: var(--accent);
+    border-radius: 10px;
+    animation: wave 1s ease-in-out infinite;
+  }
+
+  .waveform span:nth-child(1) { height: 8px; animation-delay: 0s; }
+  .waveform span:nth-child(2) { height: 16px; animation-delay: 0.1s; }
+  .waveform span:nth-child(3) { height: 12px; animation-delay: 0.2s; }
+  .waveform span:nth-child(4) { height: 20px; animation-delay: 0.15s; }
+  .waveform span:nth-child(5) { height: 10px; animation-delay: 0.05s; }
+
+  @keyframes wave {
+    0%, 100% { transform: scaleY(1); }
+    50% { transform: scaleY(0.4); }
+  }
+
+  /* Toast */
+  #toast {
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    padding: 0.65rem 1.25rem;
+    font-size: 0.78rem;
+    color: var(--text);
+    opacity: 0;
+    transition: all 0.3s;
+    z-index: 999;
+    white-space: nowrap;
+  }
+
+  #toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--muted);
+  }
+
+  .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.4; }
+  .empty-state p { font-size: 0.82rem; line-height: 1.7; }
+
+  /* Responsive */
+  @media (max-width: 600px) {
+    header { padding: 1.25rem 1.5rem; }
+    #main-screen { padding: 1.5rem; }
+    #cards-container { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-dot"></div>
+  <h1>Voice<span>Gen</span> Studio</h1>
+  <div class="badge">TTS PIPELINE</div>
+</header>
+
+<!-- ── SETUP SCREEN ── -->
+<div id="setup-screen" class="screen active">
+  <div class="setup-card">
+
+    <!-- Step 1: Domain -->
+    <div id="step-domain">
+      <div class="step-label">// Step 01</div>
+      <h2>API Domain Setup</h2>
+      <p>Apna VoiceGen server ka domain enter karo. Hum check karenge ki woh reachable hai ya nahi.</p>
+      <div class="input-wrap">
+        <input type="text" id="domain-input" placeholder="https://api.yourserver.com" autocomplete="off" />
+        <div class="error-msg" id="domain-error">Domain reachable nahi hai. Dobara check karo.</div>
+      </div>
+      <button class="btn" id="domain-btn">Check &amp; Continue →</button>
+    </div>
+
+    <!-- Step 2: Upload -->
+    <div id="step-upload" style="display:none;">
+      <div class="domain-confirm" id="domain-confirm">
+        <div class="dot"></div>
+        <span id="confirmed-domain-text"></span>
+      </div>
+      <div class="step-label">// Step 02</div>
+      <h2>Upload JSON File</h2>
+      <p>Apna voice data JSON file upload karo. File me <code>data</code> array hona chahiye voices, speed, aur texts ke saath.</p>
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" id="file-input" accept=".json,application/json" />
+        <div class="upload-icon">📂</div>
+        <p>File yahan drop karo ya click karo browse karne ke liye</p>
+        <p class="file-name" id="file-name-display"></p>
+      </div>
+      <div class="error-msg" id="file-error">Invalid JSON format. voices, speed, texts fields required hain.</div>
+      <button class="btn" id="load-btn" disabled>Load Cards →</button>
+      <button class="btn secondary" id="back-btn">← Domain Badlo</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── MAIN SCREEN ── -->
+<div id="main-screen" class="screen">
+  <div class="topbar">
+    <div>
+      <h2>Voice Cards</h2>
+      <div class="meta" id="meta-info">Domain: <span id="meta-domain">—</span> &nbsp;·&nbsp; Cards: <span id="meta-count">0</span></div>
+    </div>
+    <button class="btn-sm" id="reset-btn">↺ Reset</button>
+  </div>
+  <div id="cards-container">
+    <div class="empty-state">
+      <div class="icon">🎙️</div>
+      <p>Koi cards nahi mile. JSON file check karo.</p>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+$(function () {
+
+  /* ────────────────────────────────────────────
+     STATE
+  ──────────────────────────────────────────── */
+  let BASE_DOMAIN = '';
+  let DATA = [];
+  const audioCache = {}; // key: cardIndex, value: { url, text }
+  let currentAudio = null;
+  let currentCardIdx = null;
+
+  /* ────────────────────────────────────────────
+     TOAST
+  ──────────────────────────────────────────── */
+  function toast(msg, duration = 2500) {
+    $('#toast').text(msg).addClass('show');
+    setTimeout(() => $('#toast').removeClass('show'), duration);
+  }
+
+  /* ────────────────────────────────────────────
+     STEP 1 — DOMAIN CHECK
+  ──────────────────────────────────────────── */
+  function normalizeDomain(val) {
+    val = val.trim();
+    if (!val.startsWith('http')) val = 'https://' + val;
+    return val.replace(/\/$/, '');
+  }
+
+  async function checkDomain(domain) {
+    // GET + no-cors: browser allows this, returns opaque response if server is up.
+    // Network error (server down / wrong URL) throws → we catch → return false.
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 6000);
+      await fetch(domain, {
+        method: 'GET',
+        signal: ctrl.signal,
+        mode: 'no-cors'
+      });
+      clearTimeout(timer);
+      return true; // opaque response = server alive
+    } catch (e) {
+      console.warn('Domain check failed:', e);
+      return false;
+    }
+  }
+
+  $('#domain-btn').on('click', async function () {
+    const raw = $('#domain-input').val();
+    if (!raw.trim()) {
+      $('#domain-error').text('Domain khali nahi ho sakta.').show();
+      return;
+    }
+    const domain = normalizeDomain(raw);
+    $(this).prop('disabled', true).text('Checking…');
+    $('#domain-error').hide();
+
+    const ok = await checkDomain(domain);
+    $(this).prop('disabled', false).text('Check & Continue →');
+
+    if (!ok) {
+      $('#domain-error').text('Domain reachable nahi hai. Server chal raha hai? Dobara check karo.').show();
+      $('#domain-input').val('');
+      return;
+    }
+
+    BASE_DOMAIN = domain;
+    $('#confirmed-domain-text').text('✓ ' + domain);
+    $('#domain-confirm').css('display', 'flex');
+    $('#step-domain').hide();
+    $('#step-upload').show();
+  });
+
+  $('#domain-input').on('keydown', function (e) {
+    if (e.key === 'Enter') $('#domain-btn').click();
+  });
+
+  $('#back-btn').on('click', function () {
+    $('#step-upload').hide();
+    $('#step-domain').show();
+    BASE_DOMAIN = '';
+    $('#domain-input').val('');
+    $('#domain-error').hide();
+    $('#file-error').hide();
+    $('#file-name-display').hide();
+    $('#file-input').val('');
+    $('#load-btn').prop('disabled', true);
+  });
+
+  /* ────────────────────────────────────────────
+     STEP 2 — FILE UPLOAD
+  ──────────────────────────────────────────── */
+  const uploadZone = document.getElementById('upload-zone');
+  uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); $(uploadZone).addClass('drag-over'); });
+  uploadZone.addEventListener('dragleave', () => $(uploadZone).removeClass('drag-over'));
+  uploadZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    $(uploadZone).removeClass('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  });
+
+  $('#file-input').on('change', function () {
+    if (this.files[0]) handleFile(this.files[0]);
+  });
+
+  function handleFile(file) {
+    $('#file-error').hide();
+    const reader = new FileReader();
+    reader.onload = function (e) {
+      try {
+        const parsed = JSON.parse(e.target.result);
+        if (!parsed.data || !Array.isArray(parsed.data)) throw new Error('No data array');
+        // Validate at least first item
+        const first = parsed.data[0];
+        if (!first.voices || !first.texts) throw new Error('Missing fields');
+
+        DATA = parsed.data;
+        $('#file-name-display').text('✓ ' + file.name + ' (' + DATA.length + ' items)').show();
+        $('#load-btn').prop('disabled', false);
+        toast('File loaded — ' + DATA.length + ' voice entries');
+      } catch (err) {
+        $('#file-error').text('Invalid JSON: ' + (err.message || 'format sahi nahi hai')).show();
+        DATA = [];
+        $('#load-btn').prop('disabled', true);
+        $('#file-name-display').hide();
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  $('#load-btn').on('click', function () {
+    if (!DATA.length) return;
+    buildCards();
+    $('#setup-screen').removeClass('active');
+    $('#main-screen').addClass('active');
+    $('#meta-domain').text(BASE_DOMAIN);
+    $('#meta-count').text(DATA.length);
+  });
+
+  /* ────────────────────────────────────────────
+     BUILD CARDS
+  ──────────────────────────────────────────── */
+  function buildCards() {
+    const $container = $('#cards-container').empty();
+
+    DATA.forEach(function (item, idx) {
+      const card = $(`
+        <div class="voice-card" data-idx="${idx}">
+          <div class="card-header">
+            <span class="card-index">#${String(idx + 1).padStart(2, '0')}</span>
+            <div class="card-meta">
+              <span class="tag tag-voice">🎙 ${escapeHtml(item.voices)}</span>
+              <span class="tag tag-speed">⚡ ${escapeHtml(String(item.speed))}x</span>
+            </div>
+            <div class="waveform">
+              <span></span><span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <div class="card-text" contenteditable="true" data-original="${escapeAttr(item.texts)}">${escapeHtml(item.texts)}</div>
+          <div class="card-actions">
+            <button class="play-btn" data-idx="${idx}">
+              <span class="icon">▶</span> Play
+            </button>
+            <div class="audio-progress">
+              <div class="audio-progress-bar"></div>
+            </div>
+            <span class="card-status"></span>
+          </div>
+        </div>
+      `);
+      $container.append(card);
+    });
+
+    // Listen for text edits → mark card as modified
+    $container.on('input', '.card-text', function () {
+      const $card = $(this).closest('.voice-card');
+      const idx = $card.data('idx');
+      const original = $(this).data('original');
+      const current = $(this).text().trim();
+
+      if (current !== original || !audioCache[idx]) {
+        $card.find('.card-status').removeClass('cached').addClass('modified').html('<div class="status-dot"></div> modified').show();
+        // Invalidate cache for this card
+        if (audioCache[idx]) {
+          audioCache[idx].dirty = true;
+        }
+      } else {
+        $card.find('.card-status').removeClass('modified').addClass('cached').html('<div class="status-dot"></div> cached').show();
+      }
+    });
+  }
+
+  /* ────────────────────────────────────────────
+     PLAY BUTTON
+  ──────────────────────────────────────────── */
+  $(document).on('click', '.play-btn', function () {
+    const $btn = $(this);
+    const idx = parseInt($btn.data('idx'));
+    const $card = $btn.closest('.voice-card');
+    const $textEl = $card.find('.card-text');
+    const $progress = $card.find('.audio-progress');
+    const $progressBar = $card.find('.audio-progress-bar');
+    const $status = $card.find('.card-status');
+
+    // If this card is currently playing → stop it
+    if ($btn.hasClass('stop')) {
+      stopCurrentAudio();
+      return;
+    }
+
+    // Stop any other playing audio
+    stopCurrentAudio();
+
+    const item = DATA[idx];
+    const currentText = $textEl.text().trim() || item.texts;
+    const cached = audioCache[idx];
+    const isCached = cached && !cached.dirty && cached.text === currentText;
+
+    if (isCached) {
+      // Play cached
+      playAudio(cached.url, idx, $btn, $card, $progress, $progressBar, $status);
+      return;
+    }
+
+    // Call API
+    $btn.addClass('loading').prop('disabled', true).html('<span class="spinner"></span> Generating…');
+
+    $.ajax({
+      url: BASE_DOMAIN + '/generate',
+      method: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify({
+        voices: item.voices,
+        texts: currentText,
+        speed: parseFloat(item.speed) || 1.0
+      }),
+      success: function (res) {
+        if (res.status === 'success' && res.output_url) {
+          const fullUrl = BASE_DOMAIN + res.output_url;
+          // Cache it
+          audioCache[idx] = { url: fullUrl, text: currentText, dirty: false };
+          $status.removeClass('modified').addClass('cached').html('<div class="status-dot"></div> cached').show();
+          playAudio(fullUrl, idx, $btn, $card, $progress, $progressBar, $status);
+        } else {
+          toast('❌ Server se unexpected response mili');
+          resetBtn($btn);
+        }
+      },
+      error: function (xhr) {
+        const msg = xhr.responseJSON?.message || xhr.statusText || 'API error';
+        toast('❌ Error: ' + msg);
+        resetBtn($btn);
+      }
+    });
+  });
+
+  function playAudio(url, idx, $btn, $card, $progress, $progressBar, $status) {
+    const audio = new Audio(url);
+    currentAudio = audio;
+    currentCardIdx = idx;
+
+    audio.addEventListener('loadedmetadata', function () {
+      $btn.removeClass('loading').addClass('stop').prop('disabled', false).html('<span class="icon">■</span> Stop');
+      $card.addClass('playing');
+      $progress.addClass('active');
+      $progressBar.css('width', '0%');
+    });
+
+    audio.addEventListener('timeupdate', function () {
+      if (audio.duration) {
+        const pct = (audio.currentTime / audio.duration) * 100;
+        $progressBar.css('width', pct + '%');
+      }
+    });
+
+    audio.addEventListener('ended', function () {
+      resetCardUI($btn, $card, $progress, $progressBar);
+      currentAudio = null;
+      currentCardIdx = null;
+    });
+
+    audio.addEventListener('error', function () {
+      toast('❌ Audio play nahi ho raha. URL check karo.');
+      resetCardUI($btn, $card, $progress, $progressBar);
+      currentAudio = null;
+    });
+
+    audio.play().catch(function () {
+      toast('❌ Browser ne audio block kiya.');
+      resetCardUI($btn, $card, $progress, $progressBar);
+    });
+  }
+
+  function stopCurrentAudio() {
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+      currentAudio = null;
+    }
+    // Reset all play buttons
+    $('.play-btn').each(function () {
+      if ($(this).hasClass('stop') || $(this).hasClass('loading')) {
+        const $btn = $(this);
+        const $card = $btn.closest('.voice-card');
+        const $progress = $card.find('.audio-progress');
+        const $progressBar = $card.find('.audio-progress-bar');
+        resetCardUI($btn, $card, $progress, $progressBar);
+      }
+    });
+    currentCardIdx = null;
+  }
+
+  function resetCardUI($btn, $card, $progress, $progressBar) {
+    $btn.removeClass('loading stop').prop('disabled', false).html('<span class="icon">▶</span> Play');
+    $card.removeClass('playing');
+    $progress.removeClass('active');
+    $progressBar.css('width', '0%');
+  }
+
+  function resetBtn($btn) {
+    $btn.removeClass('loading').prop('disabled', false).html('<span class="icon">▶</span> Play');
+  }
+
+  /* ────────────────────────────────────────────
+     RESET
+  ──────────────────────────────────────────── */
+  $('#reset-btn').on('click', function () {
+    stopCurrentAudio();
+    DATA = [];
+    BASE_DOMAIN = '';
+    Object.keys(audioCache).forEach(k => delete audioCache[k]);
+    $('#cards-container').empty();
+    $('#main-screen').removeClass('active');
+    $('#step-upload').hide();
+    $('#step-domain').show();
+    $('#setup-screen').addClass('active');
+    $('#domain-input').val('');
+    $('#file-input').val('');
+    $('#file-name-display').hide();
+    $('#load-btn').prop('disabled', true);
+    $('#domain-error, #file-error').hide();
+  });
+
+  /* ────────────────────────────────────────────
+     UTILS
+  ──────────────────────────────────────────── */
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function escapeAttr(str) {
+    return String(str).replace(/"/g, '&quot;');
+  }
+
+});
+</script>
+</body>
+</html>

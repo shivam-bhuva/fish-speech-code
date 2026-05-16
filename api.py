@@ -4,7 +4,7 @@ import torch
 import numpy as np
 import torchaudio
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -20,7 +20,6 @@ pyrootutils.setup_root('/workspace/fish-speech', indicator=".project-root", pyth
 from tools.server.model_manager import ModelManager
 from tools.server.inference import inference_wrapper as inference
 from fish_speech.utils.schema import ServeTTSRequest, ServeReferenceAudio
-
 # ─────────────────────────────────────────
 # Config
 # ─────────────────────────────────────────
@@ -63,7 +62,7 @@ async def startup_event():
 # ─────────────────────────────────────────
 # Helper: TTS for one chunk
 # ─────────────────────────────────────────
-def run_tts_chunk(voice_bytes: bytes, text: str) -> np.ndarray:
+def run_tts_chunk(voice_bytes: bytes, text: str, speed: float = 0.8) -> np.ndarray:
     reference = ServeReferenceAudio(audio=voice_bytes, text="")
     req = ServeTTSRequest(
         text=text,
@@ -72,6 +71,7 @@ def run_tts_chunk(voice_bytes: bytes, text: str) -> np.ndarray:
         latency="normal",
         streaming=False,
         normalize=True,
+        temperature=max(0.1, min(1.0, speed)),
     )
 
     results = list(inference(req, model_manager.tts_inference_engine))
@@ -132,15 +132,38 @@ async def list_voices():
 
 # ─────────────────────────────────────────
 # API 3: Generate TTS
+# POST /generate
+# {
+#   "voices": "dhara",         <- string ya array dono chalega
+#   "texts": "Hello world",    <- string ya array dono chalega
+#   "speed": 0.8               <- optional, default 0.8
+# }
 # ─────────────────────────────────────────
 @app.post("/generate")
 async def generate_tts(request: Request):
     body = await request.json()
-    voices: List[str] = body.get("voices", [])
-    texts: List[str]  = body.get("texts", [])
+
+    # voices — string ya array dono accept karo
+    voices_raw = body.get("voices", [])
+    if isinstance(voices_raw, str):
+        voices = [voices_raw]
+    else:
+        voices = voices_raw
+
+    # texts — string ya array dono accept karo
+    texts_raw = body.get("texts", [])
+    if isinstance(texts_raw, str):
+        texts = [texts_raw]
+    else:
+        texts = texts_raw
+
+    # speed — default 0.8, range 0.1 to 1.0
+    speed = float(body.get("speed", 0.8))
+    speed = max(0.1, min(1.0, speed))
 
     if not voices or not texts:
-        raise HTTPException(status_code=400, detail="Both 'voices' and 'texts' arrays required")
+        raise HTTPException(status_code=400, detail="Both 'voices' and 'texts' required")
+
     if len(voices) != len(texts):
         raise HTTPException(status_code=400, detail="'voices' and 'texts' must have same length")
 
@@ -167,13 +190,13 @@ async def generate_tts(request: Request):
 
         for chunk in text_chunks:
             if chunk.strip():
-                audio_data = run_tts_chunk(voice_bytes, chunk)
+                audio_data = run_tts_chunk(voice_bytes, chunk, speed)
                 all_audio.append(audio_data)
 
     if not all_audio:
         raise HTTPException(status_code=500, detail="No audio generated")
 
-    # Merge all chunks into one file
+    # Merge all chunks
     final_audio = np.concatenate(all_audio, axis=-1)
     final_tensor = torch.from_numpy(final_audio.astype(np.float32)).unsqueeze(0)
 
@@ -185,9 +208,19 @@ async def generate_tts(request: Request):
         "status": "success",
         "output_url": f"/output/{output_filename}",
         "total_chunks": total_chunks,
-        "voice_count": len(voices)
+        "voice_count": len(voices),
+        "speed_used": speed
     })
 
+
+ 
+# ─────────────────────────────────────────
+# Job Routes Register
+# (job_routes.py se /generate-job aur
+#  /job-status routes yahan attach hote hain)
+# ─────────────────────────────────────────
+from job_routes import router as job_router
+app.include_router(job_router)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=16006, log_level="info")
