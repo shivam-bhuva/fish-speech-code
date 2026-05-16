@@ -20,6 +20,7 @@ pyrootutils.setup_root('/workspace/fish-speech', indicator=".project-root", pyth
 from tools.server.model_manager import ModelManager
 from tools.server.inference import inference_wrapper as inference
 from fish_speech.utils.schema import ServeTTSRequest, ServeReferenceAudio
+
 # ─────────────────────────────────────────
 # Config
 # ─────────────────────────────────────────
@@ -88,7 +89,7 @@ def run_tts_chunk(voice_bytes: bytes, text: str, speed: float = 0.8) -> np.ndarr
             audio_arrays.append(arr)
 
     if not audio_arrays:
-        raise HTTPException(status_code=500, detail=f"No audio data in results for: {text[:50]}")
+        raise HTTPException(status_code=500, detail=f"No audio data for: {text[:50]}")
 
     return np.concatenate(audio_arrays, axis=-1)
 
@@ -133,31 +134,23 @@ async def list_voices():
 # ─────────────────────────────────────────
 # API 3: Generate TTS
 # POST /generate
-# {
-#   "voices": "dhara",         <- string ya array dono chalega
-#   "texts": "Hello world",    <- string ya array dono chalega
-#   "speed": 0.8               <- optional, default 0.8
-# }
 # ─────────────────────────────────────────
 @app.post("/generate")
 async def generate_tts(request: Request):
     body = await request.json()
 
-    # voices — string ya array dono accept karo
     voices_raw = body.get("voices", [])
     if isinstance(voices_raw, str):
         voices = [voices_raw]
     else:
         voices = voices_raw
 
-    # texts — string ya array dono accept karo
     texts_raw = body.get("texts", [])
     if isinstance(texts_raw, str):
         texts = [texts_raw]
     else:
         texts = texts_raw
 
-    # speed — default 0.8, range 0.1 to 1.0
     speed = float(body.get("speed", 0.8))
     speed = max(0.1, min(1.0, speed))
 
@@ -171,7 +164,6 @@ async def generate_tts(request: Request):
     total_chunks = 0
 
     for voice_name, text in zip(voices, texts):
-        # Find voice file
         voice_file = None
         for ext in ['.wav', '.mp3', '.flac', '.ogg', '.m4a']:
             p = VOICES_DIR / f"{voice_name}{ext}"
@@ -184,7 +176,6 @@ async def generate_tts(request: Request):
 
         voice_bytes = voice_file.read_bytes()
 
-        # Split into 500-char chunks
         text_chunks = [text[i:i+CHUNK_SIZE] for i in range(0, len(text), CHUNK_SIZE)]
         total_chunks += len(text_chunks)
 
@@ -196,7 +187,6 @@ async def generate_tts(request: Request):
     if not all_audio:
         raise HTTPException(status_code=500, detail="No audio generated")
 
-    # Merge all chunks
     final_audio = np.concatenate(all_audio, axis=-1)
     final_tensor = torch.from_numpy(final_audio.astype(np.float32)).unsqueeze(0)
 
@@ -213,7 +203,6 @@ async def generate_tts(request: Request):
     })
 
 
- 
 # ─────────────────────────────────────────
 # Job Routes Register
 # (job_routes.py se /generate-job aur
@@ -221,6 +210,7 @@ async def generate_tts(request: Request):
 # ─────────────────────────────────────────
 from job_routes import router as job_router
 app.include_router(job_router)
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=16006, log_level="info")
