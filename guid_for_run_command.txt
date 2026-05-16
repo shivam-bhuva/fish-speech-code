@@ -1,0 +1,47 @@
+cd /workspace
+git clone https://github.com/shivam-bhuva/fish-speech-code.git tts-backend
+
+
+cd /workspace
+git clone https://github.com/fishaudio/fish-speech.git
+
+
+bash /workspace/tts-backend/install.sh
+
+
+
+mkdir -p /workspace/checkpoints/s2-pro
+aria2c --file-allocation=none -x 16 -s 16 -k 1M \
+  "https://huggingface.co/fishaudio/s2-pro/resolve/main/model-00001-of-00002.safetensors" \
+  -d /workspace/checkpoints/s2-pro -o model-00001-of-00002.safetensors
+
+
+
+aria2c --file-allocation=none -x 16 -s 16 -k 1M \
+  "https://huggingface.co/fishaudio/s2-pro/resolve/main/model-00002-of-00002.safetensors" \
+  -d /workspace/checkpoints/s2-pro -o model-00002-of-00002.safetensors
+
+
+aria2c --file-allocation=none -x 16 -s 16 -k 1M \
+  "https://huggingface.co/fishaudio/s2-pro/resolve/main/codec.pth" \
+  -d /workspace/checkpoints/s2-pro -o codec.pth
+
+
+huggingface-cli download fishaudio/s2-pro \
+  config.json tokenizer.json tokenizer_config.json \
+  special_tokens_map.json chat_template.jinja model.safetensors.index.json \
+  --local-dir /workspace/checkpoints/s2-pro
+
+
+
+cp /workspace/tts-backend/api.py /workspace/api.py && mkdir -p /workspace/storage/voices /workspace/storage/output && echo "Done!"
+
+
+
+# Start the API server
+  cd /workspace/fish-speech && uvicorn api:app --host 127.0.0.1 --port 16006 --app-dir /workspace
+
+  cd /workspace/fish-speech && python /workspace/api.py
+
+  ss -tlnp | grep 16006
+  kill -9 2539 && sleep 2 && ss -tlnp | grep 16006
