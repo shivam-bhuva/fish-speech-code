@@ -1,0 +1,31 @@
+# FastAPI Backend
+fastapi
+uvicorn
+python-multipart
+
+# Fish Speech Dependencies
+loguru
+ormsgpack
+cachetools
+einops
+pyrootutils
+pydub
+resampy
+tiktoken
+natsort
+kui
+hydra-core
+loralib
+grpcio
+einx[torch]==0.2.2
+datasets==2.18.0
+descript-audio-codec
+lightning
+tensorboard
+wandb
+opencc-python-reimplemented
+pyaudio
+
+# CONFLICT FIX - torchmetrics 1.9.0 crashes with torch 2.8.0
+# torchvision bhi uninstall karna padega pehle
+torchmetrics==0.11.4
