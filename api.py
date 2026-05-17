@@ -37,8 +37,7 @@ DEVICE             = "cuda" if torch.cuda.is_available() else "cpu"
 SAMPLE_RATE        = 44100
 
 # ─────────────────────────────────────────
-# Smart Chunker — sentence boundary pe cut karo
-# Expression tags beech mein nahi tutenge
+# Smart Chunker
 # ─────────────────────────────────────────
 def smart_chunk_text(text: str, max_chars: int = 300) -> List[str]:
     paragraphs = [p.strip() for p in text.split('\n') if p.strip()]
@@ -99,9 +98,10 @@ async def startup_event():
 
 # ─────────────────────────────────────────
 # Helper: TTS for one chunk
+# reference_text — voice file ke saath jo txt file hai uska content
 # ─────────────────────────────────────────
-def run_tts_chunk(voice_bytes: bytes, text: str, speed: float = 0.8) -> np.ndarray:
-    reference = ServeReferenceAudio(audio=voice_bytes, text="")
+def run_tts_chunk(voice_bytes: bytes, text: str, speed: float = 0.8, reference_text: str = "") -> np.ndarray:
+    reference = ServeReferenceAudio(audio=voice_bytes, text=reference_text)
     req = ServeTTSRequest(
         text=text,
         references=[reference],
@@ -133,11 +133,18 @@ def run_tts_chunk(voice_bytes: bytes, text: str, speed: float = 0.8) -> np.ndarr
 
 # ─────────────────────────────────────────
 # API 1: Add Voice
+# Form fields:
+#   name  — voice ka naam (e.g. "narrator")
+#   audio — audio file (.wav/.mp3/.flac/.ogg/.m4a)
+#   text  — (optional) audio mein jo bola gaya hai woh text with tags
+#            e.g. "[deep dramatic pause] The rain hammered the glass. [exhale]"
+#            Yeh .txt file ke roop mein same naam se save hoga
 # ─────────────────────────────────────────
 @app.post("/add-voice")
 async def add_voice(
     name: str = Form(...),
-    audio: UploadFile = File(...)
+    audio: UploadFile = File(...),
+    text: str = Form("")        # ← naya optional field
 ):
     allowed_ext = ['.wav', '.mp3', '.flac', '.ogg', '.m4a']
     ext = Path(audio.filename).suffix.lower()
@@ -145,16 +152,25 @@ async def add_voice(
     if ext not in allowed_ext:
         raise HTTPException(status_code=400, detail=f"Invalid format '{ext}'. Allowed: {allowed_ext}")
 
+    # Audio save karo
     save_path = VOICES_DIR / f"{name}{ext}"
     content = await audio.read()
     with open(save_path, 'wb') as f:
         f.write(content)
 
+    # Agar text diya hai to .txt file bhi save karo same naam se
+    txt_path = None
+    if text.strip():
+        txt_path = VOICES_DIR / f"{name}.txt"
+        txt_path.write_text(text.strip(), encoding='utf-8')
+
     return JSONResponse({
         "status": "success",
         "message": f"Voice '{name}' added successfully",
         "voice_name": name,
-        "file": str(save_path)
+        "file": str(save_path),
+        "reference_text_saved": txt_path is not None,
+        "reference_text_file": str(txt_path) if txt_path else None
     })
 
 
@@ -164,7 +180,14 @@ async def add_voice(
 @app.get("/voices")
 async def list_voices():
     allowed_ext = ['.wav', '.mp3', '.flac', '.ogg', '.m4a']
-    voices = [f.stem for f in VOICES_DIR.iterdir() if f.suffix.lower() in allowed_ext]
+    voices = []
+    for f in VOICES_DIR.iterdir():
+        if f.suffix.lower() in allowed_ext:
+            txt_file = f.with_suffix('.txt')
+            voices.append({
+                "name": f.stem,
+                "has_reference_text": txt_file.exists()
+            })
     return {"voices": voices}
 
 
@@ -213,13 +236,16 @@ async def generate_tts(request: Request):
 
         voice_bytes = voice_file.read_bytes()
 
-        # Smart chunking — sentence boundary pe, tags safe
+        # Reference text load karo agar .txt file hai
+        txt_file = voice_file.with_suffix('.txt')
+        reference_text = txt_file.read_text(encoding='utf-8').strip() if txt_file.exists() else ""
+
         text_chunks = smart_chunk_text(text, max_chars=300)
         total_chunks += len(text_chunks)
 
         for chunk in text_chunks:
             if chunk.strip():
-                audio_data = run_tts_chunk(voice_bytes, chunk, speed)
+                audio_data = run_tts_chunk(voice_bytes, chunk, speed, reference_text)
                 all_audio.append(audio_data)
 
     if not all_audio:
